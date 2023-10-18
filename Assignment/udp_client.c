@@ -108,20 +108,29 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 
 		memcpy(sends, (buf+ci), slen);
 		n = sendto(sockfd, &sends, slen, 0, addr, addrlen);	//send the packet to server
-
 		if(n == -1) {
-			printf("send error!");								//send the data
+			printf("send error!");
 			exit(1);
 		}
-		ci += slen;
+
+		if ((n= recvfrom(sockfd, &ack, sizeof(ack), 0, addr, &addrlen))==-1)
+		{
+			printf("error when receiving\n");
+			exit(1);
+		}
+		if (ack.congested || ack.damaged || ack.lost) 
+		{
+			if (ack.congested==1) {
+				printf("Congested Traffic\n");
+			} else if (ack.damaged==1) {
+				printf("Damaged packet received\n");
+			} else if (ack.lost==1) {
+				printf("Packet lost, retransmitting\n");
+			}
+		}
+		else ci += slen;
 	}
-	// if ((n= recv(sockfd, &ack, 2, 0))==-1)	//receive the ack
-	// {
-	// 	printf("error when receiving\n");
-	// 	exit(1);
-	// }
-	// if (ack.num != 1|| ack.len != 0)
-	// 	printf("error in transmission\n");
+
 	gettimeofday(&recvt, NULL);
 	*len= ci;						//get current time
 	tv_sub(&recvt, &sendt);                                                                 // get the whole trans time

@@ -13,7 +13,6 @@ int main(int argc, char *argv[])
 	struct sockaddr_in my_addr;
 	struct sockaddr_in their_addr;
 	int sin_size;
-	pid_t pid;
 
 	if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {		//create socket
 		printf("error in socket");
@@ -44,7 +43,12 @@ void str_ser(int sockfd)
 	char buf[BUFSIZE];
 	FILE *fp;
 	char recvs[DATALEN];
+
 	struct ack_so ack;
+	ack.congested=0;
+	ack.damaged=0;
+	ack.lost=0;
+
 	int end, n = 0;
 	long lseek=0;
 	end = 0;
@@ -58,7 +62,6 @@ void str_ser(int sockfd)
 			printf("error when receiving\n");
 			exit(1);
 		}
-		else printf("%d %c %ld\n", n, recvs[n-1], lseek);
 
 		if (recvs[n-1] == '\0') {
 			end = 1;
@@ -66,6 +69,10 @@ void str_ser(int sockfd)
 		}
 		memcpy((buf+lseek), recvs, n);
 		lseek+=n;
+		if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
+			printf("error when acknowledging\n");
+			exit(1);
+		}
 	}
 	recvs[n] = '\0';
 	
