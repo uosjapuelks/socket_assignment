@@ -50,6 +50,18 @@ int main(int argc, char *argv[])
 		break;
 	}
 
+	// Set socket receive timeout
+    struct timeval timeout;
+    timeout.tv_sec = 0; // 5 seconds timeout
+    timeout.tv_usec = 50000;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+        perror("setsockopt");
+        close(sockfd);
+        exit(1);
+    }
+
+
 	ser_addr.sin_family = AF_INET;
 	ser_addr.sin_port = htons(MYUDP_PORT);
 	memcpy(&(ser_addr.sin_addr.s_addr), *addrs, sizeof(struct in_addr));
@@ -76,7 +88,7 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 	long lsize, ci;
 	char sends[DATALEN];
 	struct ack_so ack;
-	int n, slen;
+	int n, slen, ackNum=0;
 	float time_inv = 0.0;
 	struct timeval sendt, recvt;
 	ci = 0;
@@ -100,7 +112,6 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 	gettimeofday(&sendt, NULL);							//get the current time
 	while(ci<= lsize)
 	{
-		printf("sending packet... %d\t%d\n", (int)ci, (int)lsize);
 		if ((lsize+1-ci) <= DATALEN)
 			slen = lsize+1-ci;
 		else 
@@ -109,31 +120,37 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 		memcpy(sends, (buf+ci), slen);
 		n = sendto(sockfd, &sends, slen, 0, addr, addrlen);	//send the packet to server
 		if(n == -1) {
-			printf("send error!");
+			printf("send error!\n");
 			exit(1);
 		}
 
-		if ((n= recvfrom(sockfd, &ack, sizeof(ack), 0, addr, &addrlen))==-1)
+		while ((n= recvfrom(sockfd, &ack, sizeof(ack), 0, addr, &addrlen))==-1)
 		{
-			printf("error when receiving\n");
-			exit(1);
+			if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                printf("Timeout occurred. No response from the server. Resending packet.\n");
+                if ((n = sendto(sockfd, &sends, slen, 0, addr, addrlen)) == -1) {
+					printf("Error in sending Ack packet");
+					close(sockfd);
+					exit(1);
+				}
+            } else {
+                perror("Error when receiving\n");
+                close(sockfd);
+                exit(1);
+            }
 		}
-		if (ack.congested || ack.damaged || ack.lost) 
+		if (ack.error || ack.num<=ackNum) 
+			printf("Packet error\n");
+		else 
 		{
-			if (ack.congested==1) {
-				printf("Congested Traffic\n");
-			} else if (ack.damaged==1) {
-				printf("Damaged packet received\n");
-			} else if (ack.lost==1) {
-				printf("Packet lost, retransmitting\n");
-			}
+			ci += slen;
+			ackNum++;
 		}
-		else ci += slen;
 	}
 
 	gettimeofday(&recvt, NULL);
 	*len= ci;						//get current time
-	tv_sub(&recvt, &sendt);                                                                 // get the whole trans time
+	tv_sub(&recvt, &sendt);			// get the whole trans time
 	time_inv += (recvt.tv_sec)*1000.0 + (recvt.tv_usec)/1000.0;
 	return(time_inv);
 }

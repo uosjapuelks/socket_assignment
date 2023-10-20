@@ -30,7 +30,6 @@ char data[DATALEN];	//the packet data
 
 struct ack_so
 {
-uint8_t congested;
-uint8_t lost;
-uint8_t damaged;
+uint8_t num;
+uint8_t error;
 };

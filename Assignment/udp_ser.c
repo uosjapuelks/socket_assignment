@@ -29,6 +29,18 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	// Set socket receive timeout
+    struct timeval timeout;
+    // timeout.tv_sec = 5; // 5 seconds timeout
+    timeout.tv_usec = 50000;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+        perror("setsockopt");
+        close(sockfd);
+        exit(1);
+    }
+
+
 	printf("receiving start\n");
 	while(1) {
 		printf("waiting for data\n");
@@ -45,9 +57,8 @@ void str_ser(int sockfd)
 	char recvs[DATALEN];
 
 	struct ack_so ack;
-	ack.congested=0;
-	ack.damaged=0;
-	ack.lost=0;
+	ack.num=0;
+	ack.error=0;
 
 	int end, n = 0;
 	long lseek=0;
@@ -58,9 +69,19 @@ void str_ser(int sockfd)
 
 	while(!end)
 	{
-		if ((n=recvfrom(sockfd, &recvs, DATALEN, 0, (struct sockaddr *)&addr, &len)) == -1) {      //receive the packet
-			printf("error when receiving\n");
-			exit(1);
+		while ((n=recvfrom(sockfd, &recvs, DATALEN, 0, (struct sockaddr *)&addr, &len)) == -1) {      //receive the packet
+            if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                printf("Timeout occurred. No response from the client.\n");
+                if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
+					printf("Error in sending Ack packet\n");
+					close(sockfd);
+					exit(1);
+				}
+            } else {
+                perror("Error in receiving packet\n");
+                close(sockfd);
+                exit(1);
+            }
 		}
 
 		if (recvs[n-1] == '\0') {
@@ -69,8 +90,10 @@ void str_ser(int sockfd)
 		}
 		memcpy((buf+lseek), recvs, n);
 		lseek+=n;
+		ack.num++;
 		if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
-			printf("error when acknowledging\n");
+			printf("Error in sending Ack packet\n");
+			close(sockfd);
 			exit(1);
 		}
 	}
