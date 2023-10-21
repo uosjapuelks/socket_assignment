@@ -86,9 +86,10 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 {
 	char *buf;
 	long lsize, ci;
-	char sends[DATALEN];
+	char sends[DATALEN+1];
 	struct ack_so ack;
-	int n, slen, ackNum=0;
+	int n, slen;
+	uint8_t ackNum=0;
 	float time_inv = 0.0;
 	struct timeval sendt, recvt;
 	ci = 0;
@@ -117,8 +118,11 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 		else 
 			slen = DATALEN;
 
-		memcpy(sends, (buf+ci), slen);
-		n = sendto(sockfd, &sends, slen, 0, addr, addrlen);	//send the packet to server
+		memcpy(sends+1, (buf+ci), slen);
+		sends[0] = ackNum;
+		
+		printf("Sending Packet %d size: %d\n", ackNum, slen+1);
+		n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen);	//send the packet to server
 		if(n == -1) {
 			printf("send error!\n");
 			exit(1);
@@ -128,7 +132,7 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 		{
 			if (errno == EWOULDBLOCK || errno == EAGAIN) {
                 printf("Timeout occurred. No response from the server. Resending packet.\n");
-                if ((n = sendto(sockfd, &sends, slen, 0, addr, addrlen)) == -1) {
+                if ((n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen)) == -1) {
 					printf("Error in sending Ack packet\n");
 					close(sockfd);
 					exit(1);
