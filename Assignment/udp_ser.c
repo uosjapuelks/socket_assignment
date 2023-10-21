@@ -88,10 +88,15 @@ void str_ser(int sockfd)
 			end = 1;
 			n--;
 		}
+
 		printf("Received Packet %d size %d current ack %d\n", recvs[0], n, ack.num);
-		memcpy((buf+lseek), recvs+1, n-1);
-		lseek+=n-1;
-		ack.num++;
+		if (recvs[0] == ack.num) 
+		{
+			memcpy((buf+lseek), recvs+1, n-1);
+			lseek+=n-1;
+			ack.num++;
+		}
+		
 		if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
 			printf("Error in sending Ack packet\n");
 			close(sockfd);

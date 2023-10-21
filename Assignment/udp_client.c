@@ -118,10 +118,12 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 		else 
 			slen = DATALEN;
 
-		memcpy(sends+1, (buf+ci), slen);
-		sends[0] = ackNum;
+		printf("ack.num: %d Sending Packet %d size: %d\n", ack.num, ackNum, slen+1);
+		if (ack.num == ackNum) {
+			memcpy(sends+1, (buf+ci), slen);
+			sends[0] = ackNum;
+		}
 		
-		printf("Sending Packet %d size: %d\n", ackNum, slen+1);
 		n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen);	//send the packet to server
 		if(n == -1) {
 			printf("send error!\n");
@@ -143,9 +145,11 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
                 exit(1);
             }
 		}
-		if (ack.error || ack.num<=ackNum) 
+		if (ack.error)
 			printf("Packet error\n");
-		else 
+		else if (ack.num<=ackNum)
+			printf("Duplicate Packet or Missing\n");
+		else // if received ack number greater than ackNum, we can send the next packet
 		{
 			ci += slen;
 			ackNum++;
