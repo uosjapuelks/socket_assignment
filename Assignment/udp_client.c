@@ -129,7 +129,7 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, int addrlen, long *le
 			if (errno == EWOULDBLOCK || errno == EAGAIN) {
                 printf("Timeout occurred. No response from the server. Resending packet.\n");
                 if ((n = sendto(sockfd, &sends, slen, 0, addr, addrlen)) == -1) {
-					printf("Error in sending Ack packet");
+					printf("Error in sending Ack packet\n");
 					close(sockfd);
 					exit(1);
 				}
