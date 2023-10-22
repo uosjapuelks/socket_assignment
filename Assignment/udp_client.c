@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 	// Set socket receive timeout
     struct timeval timeout;
     timeout.tv_sec = 0; // 5 seconds timeout
-    timeout.tv_usec = 50000;
+    timeout.tv_usec = 5000;
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
         perror("setsockopt");
@@ -75,7 +75,8 @@ int main(int argc, char *argv[])
 
 	ti = str_cli(fp, sockfd, (struct sockaddr *)&ser_addr, sizeof(struct sockaddr_in), &len);   // perform the transmission and receiving
 	rt = (len/(float)ti);
-	printf("Time(ms) : %.3f, Data sent(byte): %d\nData rate: %f (Kbytes/s)\n", ti, (int)len, rt);
+	printf("\nError probability: %.3f\n", (float)ERRORRATE/(float)1000);
+	printf("Time(ms) : %.3f, Data sent(byte): %d\nData rate: %f (Kbytes/s)\n\n\n", ti, (int)len, rt);
 	
 	close(sockfd);
 	fclose(fp);
@@ -84,6 +85,8 @@ int main(int argc, char *argv[])
 
 float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, long *len)
 {
+	int noError=0;
+	int missing=0, dupes=0;
 	char *buf;
 	long lsize, ci;
 	char sends[DATALEN+1];
@@ -118,13 +121,15 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 		else 
 			slen = DATALEN;
 
-		printf("ack.num: %d Sending Packet %d size: %d\n", ack.num, ackNum, slen+1);
+		// printf("ack.num: %d Sending Packet %d size: %d\n\n", ack.num, ackNum, slen+1);
 		if (ack.num == ackNum) {
 			memcpy(sends+1, (buf+ci), slen);
 			sends[0] = ackNum;
 		}
 		
-		n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen);	//send the packet to server
+		noError = (rand()%1000 >= ERRORRATE);
+		if (noError)
+			n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen);	//send the packet to server
 		if(n == -1) {
 			printf("send error!\n");
 			exit(1);
@@ -133,26 +138,26 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 		while ((n= recvfrom(sockfd, &ack, sizeof(ack), 0, addr, &addrlen))==-1)
 		{
 			if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                printf("Timeout occurred. No response from the server. Resending packet.\n");
+                // printf("Timeout occurred. No response from the server. Resending packet.\n");
                 if ((n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen)) == -1) {
 					printf("Error in sending Ack packet\n");
-					close(sockfd);
-					exit(1);
 				}
             } else {
                 perror("Error when receiving\n");
-                close(sockfd);
-                exit(1);
             }
 		}
-		if (ack.error)
-			printf("Packet error\n");
-		else if (ack.num<=ackNum)
-			printf("Duplicate Packet or Missing\n");
-		else // if received ack number greater than ackNum, we can send the next packet
-		{
-			ci += slen;
-			ackNum++;
+		if (n != -1) {
+			if (ack.error)
+				printf("Packet error\n");
+			else if (ack.num<ackNum)
+				missing++;
+			else if (ack.num==ackNum)
+				dupes++;
+			else // if received ack number greater than ackNum, we can send the next packet
+			{
+				ci += slen;
+				ackNum++;
+			}
 		}
 	}
 
@@ -160,6 +165,7 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 	*len= ci;						//get current time
 	tv_sub(&recvt, &sendt);			// get the whole trans time
 	time_inv += (recvt.tv_sec)*1000.0 + (recvt.tv_usec)/1000.0;
+	printf("Total Missing: %d, Dupes: %d\n", missing, dupes);
 	return(time_inv);
 }
 

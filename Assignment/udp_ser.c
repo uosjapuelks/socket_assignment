@@ -5,7 +5,7 @@ udp_ser.c: the source file of the server in udp transmission
 
 #define BACKLOG 10
 
-void str_ser(int sockfd);			// transmitting and receiving function
+int str_ser(int sockfd);			// transmitting and receiving function
 
 int main(int argc, char *argv[])
 {
@@ -13,6 +13,7 @@ int main(int argc, char *argv[])
 	struct sockaddr_in my_addr;
 	struct sockaddr_in their_addr;
 	int sin_size;
+	int end=0;
 
 	if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {		//create socket
 		printf("error in socket");
@@ -31,8 +32,8 @@ int main(int argc, char *argv[])
 
 	// Set socket receive timeout
     struct timeval timeout;
-    // timeout.tv_sec = 5; // 5 seconds timeout
-    timeout.tv_usec = 50000;
+    timeout.tv_sec = 0; // 5 seconds timeout
+    timeout.tv_usec = 5000;
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
         perror("setsockopt");
@@ -42,16 +43,20 @@ int main(int argc, char *argv[])
 
 
 	printf("receiving start\n");
-	while(1) {
+	while(end!=3) {
 		printf("waiting for data\n");
-		str_ser(sockfd);			// send and receive
+		end+=str_ser(sockfd);			// send and receive
 	}
 	close(sockfd);
 	exit(0);
 }
 
-void str_ser(int sockfd)
+int str_ser(int sockfd)
 {
+	int noError = 0;
+	srand(time(NULL));
+	int errCnt=0;
+
 	char buf[BUFSIZE];
 	FILE *fp;
 	char recvs[DATALEN+1];
@@ -69,18 +74,17 @@ void str_ser(int sockfd)
 
 	while(!end)
 	{
-		while ((n=recvfrom(sockfd, &recvs, DATALEN+1, 0, (struct sockaddr *)&addr, &len)) == -1) {      //receive the packet
-            if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                printf("Timeout occurred. No response from the client.\n");
+		noError = (rand()%1000 >= ERRORRATE);
+
+		while (((n=recvfrom(sockfd, &recvs, DATALEN+1, 0, (struct sockaddr *)&addr, &len)) == -1)) {      //receive the packet
+            if ((errno == EWOULDBLOCK || errno == EAGAIN) && ack.num>0) {
+                // printf("Timeout occurred. No response from the client.\n");
+				errCnt++;
                 if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
 					printf("Error in sending Ack packet\n");
-					close(sockfd);
-					exit(1);
 				}
-            } else {
-                perror("Error in receiving packet\n");
-                close(sockfd);
-                exit(1);
+            } else if (ack.num>0) {
+                printf("Error in receiving packet\n");
             }
 		}
 
@@ -89,15 +93,15 @@ void str_ser(int sockfd)
 			n--;
 		}
 
-		printf("Received Packet %d size %d current ack %d\n", recvs[0], n, ack.num);
 		if (recvs[0] == ack.num) 
 		{
+			// printf("Received Packet %d size %d current ack %d\n", recvs[0], n, ack.num);
 			memcpy((buf+lseek), recvs+1, n-1);
 			lseek+=n-1;
 			ack.num++;
 		}
 		
-		if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
+		if (noError && (n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
 			printf("Error in sending Ack packet\n");
 			close(sockfd);
 			exit(1);
@@ -112,5 +116,7 @@ void str_ser(int sockfd)
 	}
 	fwrite (buf , 1 , lseek , fp);				//write data into file
 	fclose(fp);
+	printf("\nTotal errors: %d\n", errCnt);
 	printf("a file has been successfully received!\nthe total data received is %d bytes\n", (int)lseek);
+	return 1;
 }
