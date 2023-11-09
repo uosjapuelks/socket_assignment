@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 
 
 	printf("receiving start\n");
-	while(end!=3) {
+	while(end!=1) {
 		printf("waiting for data\n");
 		end+=str_ser(sockfd);			// send and receive
 	}
@@ -54,8 +54,11 @@ int main(int argc, char *argv[])
 int str_ser(int sockfd)
 {
 	int noError = 0;
+	int sendError = 0;
 	srand(time(NULL));
+	int missing=0;
 	int errCnt=0;
+	int dupe=0;
 
 	char buf[BUFSIZE];
 	FILE *fp;
@@ -75,11 +78,12 @@ int str_ser(int sockfd)
 	while(!end)
 	{
 		noError = (rand()%1000 >= ERRORRATE);
+		sendError = (rand()%2 == 0);
 
 		while (((n=recvfrom(sockfd, &recvs, DATALEN+1, 0, (struct sockaddr *)&addr, &len)) == -1)) {      //receive the packet
             if ((errno == EWOULDBLOCK || errno == EAGAIN) && ack.num>0) {
                 // printf("Timeout occurred. No response from the client.\n");
-				errCnt++;
+				missing++;
                 if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
 					printf("Error in sending Ack packet\n");
 				}
@@ -99,12 +103,27 @@ int str_ser(int sockfd)
 			memcpy((buf+lseek), recvs+1, n-1);
 			lseek+=n-1;
 			ack.num++;
-		}
+		} 
+		else if (recvs[0]+1 != ack.num)
+			errCnt++;
+		else if (recvs[0]+1 == ack.num)
+			dupe++;
 		
-		if (noError && (n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
-			printf("Error in sending Ack packet\n");
-			close(sockfd);
-			exit(1);
+		if (noError || end) {
+			if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
+				printf("Error in sending Ack packet\n");
+				close(sockfd);
+				exit(1);
+			}
+		}
+		else if (!noError && sendError) {
+			ack.error=1;
+			if ((n=sendto(sockfd, &ack, sizeof(ack), 0, (struct sockaddr *)&addr, len)) == -1) {
+				printf("Error in sending Ack packet\n");
+				close(sockfd);
+				exit(1);
+			}
+			ack.error=0;
 		}
 	}
 	recvs[n] = '\0';
@@ -116,7 +135,7 @@ int str_ser(int sockfd)
 	}
 	fwrite (buf , 1 , lseek , fp);				//write data into file
 	fclose(fp);
-	printf("\nTotal errors: %d\n", errCnt);
+	printf("\nTotal missing: %d, Error: %d, Dupes: %d\n", missing, errCnt, dupe);
 	printf("a file has been successfully received!\nthe total data received is %d bytes\n", (int)lseek);
 	return 1;
 }

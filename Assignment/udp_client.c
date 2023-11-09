@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
 float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, long *len)
 {
 	int noError=0;
+	int sendError=0;
 	int missing=0, dupes=0;
 	char *buf;
 	long lsize, ci;
@@ -128,8 +129,13 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 		}
 		
 		noError = (rand()%1000 >= ERRORRATE);
+		sendError = (rand()%2 == 0);
 		if (noError)
 			n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen);	//send the packet to server
+		else if (sendError) {
+			sends[0] = ackNum-1;
+			n = sendto(sockfd, &sends, slen+1, 0, addr, addrlen);	//send the packet to server
+		}
 		if(n == -1) {
 			printf("send error!\n");
 			exit(1);
@@ -148,8 +154,6 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 		}
 		if (n != -1) {
 			if (ack.error)
-				printf("Packet error\n");
-			else if (ack.num<ackNum)
 				missing++;
 			else if (ack.num==ackNum)
 				dupes++;
@@ -165,7 +169,7 @@ float str_cli(FILE *fp, int sockfd, struct sockaddr *addr, socklen_t addrlen, lo
 	*len= ci;						//get current time
 	tv_sub(&recvt, &sendt);			// get the whole trans time
 	time_inv += (recvt.tv_sec)*1000.0 + (recvt.tv_usec)/1000.0;
-	printf("Total Missing: %d, Dupes: %d\n", missing, dupes);
+	printf("Total Error Received: %d, Dupes: %d\n", missing, dupes);
 	return(time_inv);
 }
 

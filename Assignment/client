@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+IP=${2:-127.0.0.1}
+
+make client
+clear
+./udpClient $IP >> output/clientOut${1:-0}.txt
+diff myUDPreceive.txt myfile.txt > output/diff${1:-0}.txt

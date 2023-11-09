@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+make clean
+make server
+clear
+./udpServer >> output/serverOut${1:-0}.txt
